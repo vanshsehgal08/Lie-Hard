@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { io } from "socket.io-client";
 import { toast } from "sonner";
 
@@ -11,6 +11,16 @@ export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
   const [player, setPlayer] = useState("");
   const router = useRouter();
+
+  // Cleanup socket on unmount
+  useEffect(() => {
+    return () => {
+      if (socket) {
+        console.log("SocketContext: Cleaning up socket on unmount");
+        socket.disconnect();
+      }
+    };
+  }, [socket]);
 
   const connectSocket = (playerName) => {
     console.log("SocketContext: connectSocket called with playerName:", playerName);
@@ -54,7 +64,7 @@ export const SocketProvider = ({ children }) => {
         // Render-compatible settings - both polling and WebSocket
         transports: ["polling", "websocket"],
         path: "/socket.io/",
-        forceNew: true,
+        forceNew: false, // Don't force new connection
         upgrade: true
       });
 
@@ -87,6 +97,8 @@ export const SocketProvider = ({ children }) => {
 
       s.on("reconnect", (attemptNumber) => {
         console.log("SocketContext: Socket reconnected after", attemptNumber, "attempts");
+        // Re-authenticate with the server
+        s.emit("reconnect", { name: playerName });
       });
 
       s.on("reconnect_error", (error) => {

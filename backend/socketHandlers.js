@@ -26,6 +26,12 @@ export function registerSocketHandlers(io) {
   io.on("connection", (socket) => {
     console.log(`User connected with id ${socket.id}`);
 
+    // Handle reconnection
+    socket.on("reconnect", ({ name }) => {
+      console.log(`User reconnected with id ${socket.id} and name ${name}`);
+      socket.playerName = name;
+    });
+
     // Create room
     socket.on("make-room", async ({ isPrivate = true }, callback) => {
       console.log(`Make room request by ${socket.playerName}`);

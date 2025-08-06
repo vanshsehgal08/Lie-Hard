@@ -68,11 +68,23 @@ const GamePage = () => {
 
   useEffect(() => {
     if (!socket || !roomId) {
+      console.log("GamePage: No socket or roomId, redirecting to home");
       router.push("/");
       return;
     }
 
+    // Check if socket is connected
+    if (!socket.connected) {
+      console.log("GamePage: Socket not connected, waiting for connection...");
+      socket.once("connect", () => {
+        console.log("GamePage: Socket connected, joining room");
+        socket.emit("get-room-users", roomId);
+      });
+      return;
+    }
+
     socket.on("disconnect", () => {
+      console.log("GamePage: Socket disconnected");
       socket.emit("leave-room", roomId);
       return;
     });
@@ -223,6 +235,7 @@ const GamePage = () => {
     socket.on("room-error", handleRoomError);
 
     return () => {
+      console.log("GamePage: Cleaning up socket event listeners");
       socket.off("room-joined", handleRoomJoined);
       socket.off("room-users", handleRoomUsers);
       socket.off("player-joined", handlePlayerJoined);
