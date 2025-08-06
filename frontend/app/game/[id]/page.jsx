@@ -13,24 +13,31 @@ import GameOver from "@/components/GameOver";
 import GameSettings from "@/components/GameSettings";
 
 const GamePage = () => {
-  const { isConnected, player, currentRoom, sendMessage } = useSocket();
+  const { 
+    isConnected, 
+    player, 
+    currentRoom, 
+    sendMessage, 
+    updateRoomState,
+    roomData, 
+    chatMessages, 
+    roomPlayers 
+  } = useSocket();
   const router = useRouter();
   const params = useParams();
   const roomId = params.id;
 
   const [room, setRoom] = useState({
     id: roomId || "",
-    players: [
-      { id: "1", name: player || "Player", score: 0 }
-    ],
+    players: [],
     status: "WAITING",
     currentRound: 0,
     currentPlayer: null,
-    hostId: "1",
+    hostId: null,
     votes: new Map(),
     chatHistory: []
   });
-  const [isHost, setIsHost] = useState(true);
+  const [isHost, setIsHost] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stories, setStories] = useState(["", "", ""]);
   const [isTruth, setIsTruth] = useState(null);
@@ -65,28 +72,44 @@ const GamePage = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Update room state from real-time data
+  useEffect(() => {
+    if (roomData) {
+      setRoom(prev => ({
+        ...prev,
+        ...roomData,
+        players: roomData.players || prev.players,
+        status: roomData.status || prev.status,
+        currentRound: roomData.currentRound || prev.currentRound,
+        currentPlayer: roomData.currentPlayer || prev.currentPlayer,
+        hostId: roomData.hostId || prev.hostId
+      }));
+      
+      // Check if current player is host
+      const currentPlayer = roomData.players?.find(p => p.name === player);
+      setIsHost(currentPlayer?.id === roomData.hostId);
+    }
+  }, [roomData, player]);
+
+  // Update chat history from real-time messages
+  useEffect(() => {
+    if (chatMessages.length > 0) {
+      setRoom(prev => ({
+        ...prev,
+        chatHistory: chatMessages
+      }));
+    }
+  }, [chatMessages]);
+
   useEffect(() => {
     if (!isConnected || !roomId) {
       router.push("/");
       return;
     }
 
-    // Simulate room updates for now
     console.log("Game page loaded with room:", roomId);
     toast.success("Connected to room!");
     
-    // Simulate other players joining
-    setTimeout(() => {
-      setRoom(prev => ({
-        ...prev,
-        players: [
-          { id: "1", name: player || "Player", score: 0 },
-          { id: "2", name: "Alice", score: 0 },
-          { id: "3", name: "Bob", score: 0 }
-        ]
-      }));
-    }, 2000);
-
   }, [isConnected, roomId, router, player]);
 
   const handleLeaveRoom = () => {
@@ -94,32 +117,48 @@ const GamePage = () => {
     router.push("/");
   };
 
-  const handleStartGame = () => {
+  const handleStartGame = async () => {
     if (room.players.length < 2) {
       toast.error("Need at least 2 players to start");
       return;
     }
     
-    setRoom(prev => ({ ...prev, status: "STORY_SUBMISSION" }));
-    toast.success("Game started! Submit your 3 stories.");
+    const updatedRoom = { ...room, status: "STORY_SUBMISSION" };
+    setRoom(updatedRoom);
+    
+    try {
+      await updateRoomState(updatedRoom);
+      toast.success("Game started! Submit your 3 stories.");
+    } catch (error) {
+      toast.error("Failed to start game");
+      console.error("Error starting game:", error);
+    }
   };
 
-  const handleResetGame = () => {
-    setRoom(prev => ({ 
-      ...prev, 
+  const handleResetGame = async () => {
+    const updatedRoom = { 
+      ...room, 
       status: "WAITING",
       currentRound: 0,
       currentPlayer: null,
       votes: new Map()
-    }));
+    };
+    setRoom(updatedRoom);
     setStories(["", "", ""]);
     setIsTruth(null);
     setHasSubmitted(false);
     setCurrentVote(null);
-    toast.info("Game reset! Ready for a new round.");
+    
+    try {
+      await updateRoomState(updatedRoom);
+      toast.info("Game reset! Ready for a new round.");
+    } catch (error) {
+      toast.error("Failed to reset game");
+      console.error("Error resetting game:", error);
+    }
   };
 
-  const handleSubmitStories = () => {
+  const handleSubmitStories = async () => {
     if (stories.some(story => !story.trim())) {
       toast.error("Please fill in all 3 stories");
       return;
@@ -133,16 +172,24 @@ const GamePage = () => {
     toast.success("Stories submitted!");
     
     // Simulate moving to questioning phase
-    setTimeout(() => {
-      setRoom(prev => ({ 
-        ...prev, 
+    setTimeout(async () => {
+      const updatedRoom = { 
+        ...room, 
         status: "QUESTIONING",
-        currentPlayer: "1"
-      }));
+        currentPlayer: room.players[0]?.id
+      };
+      setRoom(updatedRoom);
+      
+      try {
+        await updateRoomState(updatedRoom);
+      } catch (error) {
+        toast.error("Failed to update game state");
+        console.error("Error updating game state:", error);
+      }
     }, 2000);
   };
 
-  const handleSubmitVote = () => {
+  const handleSubmitVote = async () => {
     if (currentVote === null) {
       toast.error("Please select a story to vote for");
       return;
@@ -151,32 +198,33 @@ const GamePage = () => {
     toast.success("Vote submitted!");
     
     // Simulate moving to reveal phase
-    setTimeout(() => {
-      setRoom(prev => ({ 
-        ...prev, 
+    setTimeout(async () => {
+      const updatedRoom = { 
+        ...room, 
         status: "REVEAL"
-      }));
+      };
+      setRoom(updatedRoom);
+      
+      try {
+        await updateRoomState(updatedRoom);
+      } catch (error) {
+        toast.error("Failed to update game state");
+        console.error("Error updating game state:", error);
+      }
     }, 2000);
   };
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!chatMessage.trim()) return;
     
-    const newMessage = {
-      id: Date.now(),
-      player: { name: player || "Player" },
-      message: chatMessage,
-      timestamp: new Date().toISOString()
-    };
-    
-    setRoom(prev => ({
-      ...prev,
-      chatHistory: [...prev.chatHistory, newMessage]
-    }));
-    
-    setChatMessage("");
-    sendMessage(chatMessage, "chat");
+    try {
+      await sendMessage(chatMessage, "chat");
+      setChatMessage("");
+    } catch (error) {
+      toast.error("Failed to send message");
+      console.error("Error sending message:", error);
+    }
   };
 
   const copyRoomId = () => {
@@ -187,7 +235,7 @@ const GamePage = () => {
   };
 
   const currentPlayer = room.players.find(p => p.id === room.currentPlayer);
-  const isCurrentPlayer = currentPlayer?.id === "1";
+  const isCurrentPlayer = currentPlayer?.name === player;
   const isStorySubmissionPhase = room.status === "STORY_SUBMISSION";
   const isQuestioningPhase = room.status === "QUESTIONING";
   const isVotingPhase = room.status === "VOTING";
@@ -394,7 +442,7 @@ const GamePage = () => {
               <div
                 key={player.id}
                 className={`card-premium p-6 rounded-2xl border transition-all duration-300 ${
-                  player.id === "1"
+                  player.name === player
                     ? "bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-400/50 shadow-xl"
                     : player.id === room.currentPlayer
                     ? "bg-gradient-to-r from-orange-500/20 to-red-500/20 border-orange-400/50 shadow-xl animate-pulse-glow"
@@ -497,7 +545,7 @@ const GamePage = () => {
                 <div
                   key={player.id}
                   className={`card-premium p-4 rounded-2xl border transition-all duration-300 ${
-                    player.id === "1"
+                    player.name === player
                       ? "bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-400/50 shadow-xl"
                       : player.id === room.currentPlayer
                       ? "bg-gradient-to-r from-orange-500/20 to-red-500/20 border-orange-400/50 shadow-xl animate-pulse-glow"

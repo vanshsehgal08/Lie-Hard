@@ -9,7 +9,10 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [player, setPlayer] = useState("");
   const [currentRoom, setCurrentRoom] = useState(null);
-  const pollingIntervalRef = useRef(null);
+  const [roomData, setRoomData] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [roomPlayers, setRoomPlayers] = useState([]);
+  const eventSourceRef = useRef(null);
   const router = useRouter();
 
   const getBaseUrl = () => {
@@ -42,43 +45,103 @@ export const SocketProvider = ({ children }) => {
       
       console.log("HTTPContext: Backend is accessible, connecting to room");
       
-      // For now, just simulate successful connection
+      // Join the room via HTTP
+      const joinResponse = await fetch(`${baseUrl}/api/join-room`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomId,
+          playerName
+        })
+      });
+
+      if (!joinResponse.ok) {
+        throw new Error('Failed to join room');
+      }
+
+      const joinData = await joinResponse.json();
+      console.log("HTTPContext: Successfully joined room:", joinData);
+      
       setIsConnected(true);
       setPlayer(playerName);
       setCurrentRoom(roomId);
       
-      console.log("HTTPContext: Successfully connected to room");
-      
-      // Start polling for updates
-      startPolling(roomId, playerName);
+      // Start listening for room updates via Server-Sent Events
+      startEventStream(roomId, playerName);
       
     } catch (error) {
       console.error("HTTPContext: Error connecting to room:", error);
       setIsConnected(false);
+      throw error;
     }
   };
 
-  const startPolling = (roomId, playerName) => {
-    // Clear any existing polling
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
+  const startEventStream = (roomId, playerName) => {
+    // Close existing event source if any
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
     }
+
+    const baseUrl = getBaseUrl();
+    const eventSource = new EventSource(`${baseUrl}/api/room-updates/${roomId}?playerName=${encodeURIComponent(playerName)}`);
     
-    // Start polling every 5 seconds
-    pollingIntervalRef.current = setInterval(async () => {
+    eventSource.onopen = () => {
+      console.log("HTTPContext: Event stream opened");
+    };
+
+    eventSource.onmessage = (event) => {
       try {
-        const baseUrl = getBaseUrl();
-        const response = await fetch(`${baseUrl}/api/test`);
-        if (response.ok) {
-          console.log("HTTPContext: Polling - backend is alive");
+        const data = JSON.parse(event.data);
+        console.log("HTTPContext: Received event:", data);
+        
+        if (data.type === 'connected') {
+          console.log("HTTPContext: Connected to room updates");
+        } else if (data.type === 'ping') {
+          // Keep connection alive
+          console.log("HTTPContext: Ping received");
+        } else if (data.playerName && data.message) {
+          // Chat message received
+          const newMessage = {
+            id: Date.now() + Math.random(),
+            player: { name: data.playerName },
+            message: data.message,
+            timestamp: data.timestamp || new Date().toISOString()
+          };
+          setChatMessages(prev => [...prev, newMessage]);
+        } else if (data.type === 'room_update') {
+          // Room state update
+          setRoomData(data.roomData);
+          if (data.roomData.players) {
+            setRoomPlayers(data.roomData.players);
+          }
+        } else if (data.type === 'player_joined') {
+          // New player joined
+          setRoomPlayers(prev => [...prev, { id: data.playerId, name: data.playerName, score: 0 }]);
+        } else if (data.type === 'player_left') {
+          // Player left
+          setRoomPlayers(prev => prev.filter(p => p.id !== data.playerId));
         }
       } catch (error) {
-        console.error("HTTPContext: Polling error:", error);
+        console.error("HTTPContext: Error parsing event data:", error);
       }
-    }, 5000);
+    };
+
+    eventSource.onerror = (error) => {
+      console.error("HTTPContext: Event stream error:", error);
+      // Try to reconnect after a delay
+      setTimeout(() => {
+        if (isConnected) {
+          startEventStream(roomId, playerName);
+        }
+      }, 5000);
+    };
+
+    eventSourceRef.current = eventSource;
   };
 
-  const sendMessage = async (message, type = 'message') => {
+  const sendMessage = async (message, type = 'chat') => {
     if (!currentRoom || !player) {
       console.error("HTTPContext: Cannot send message - not connected to room");
       return;
@@ -86,33 +149,92 @@ export const SocketProvider = ({ children }) => {
 
     try {
       const baseUrl = getBaseUrl();
-      // For now, just log the message since we don't have the send endpoint working
-      console.log("HTTPContext: Message sent:", { roomId: currentRoom, playerName: player, message, type });
+      const response = await fetch(`${baseUrl}/api/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomId: currentRoom,
+          playerName: player,
+          message,
+          type
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      console.log("HTTPContext: Message sent successfully");
       
-      // In a real implementation, this would send to the backend
-      // For now, we'll just simulate success
-      console.log("HTTPContext: Message sent successfully (simulated)");
+      // Add message to local state immediately for better UX
+      const newMessage = {
+        id: Date.now() + Math.random(),
+        player: { name: player },
+        message,
+        timestamp: new Date().toISOString()
+      };
+      setChatMessages(prev => [...prev, newMessage]);
+      
     } catch (error) {
       console.error("HTTPContext: Error sending message:", error);
+      throw error;
+    }
+  };
+
+  const updateRoomState = async (roomData) => {
+    if (!currentRoom) {
+      console.error("HTTPContext: Cannot update room - not connected to room");
+      return;
+    }
+
+    try {
+      const baseUrl = getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomId: currentRoom,
+          playerName: player,
+          message: JSON.stringify(roomData),
+          type: 'room_update'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update room state');
+      }
+
+      console.log("HTTPContext: Room state updated successfully");
+      
+    } catch (error) {
+      console.error("HTTPContext: Error updating room state:", error);
+      throw error;
     }
   };
 
   const disconnect = () => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
     }
     setIsConnected(false);
     setPlayer("");
     setCurrentRoom(null);
+    setRoomData(null);
+    setChatMessages([]);
+    setRoomPlayers([]);
     console.log("HTTPContext: Disconnected from room");
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
     };
   }, []);
@@ -123,10 +245,14 @@ export const SocketProvider = ({ children }) => {
         isConnected, 
         connectToRoom, 
         sendMessage, 
+        updateRoomState,
         disconnect, 
         player, 
         setPlayer,
-        currentRoom 
+        currentRoom,
+        roomData,
+        chatMessages,
+        roomPlayers
       }}
     >
       {children}

@@ -3,6 +3,7 @@ import { roomStorage } from './storage.js';
 // Simple in-memory storage for real-time updates
 const clients = new Map(); // roomId -> Set of client connections
 const pendingMessages = new Map(); // roomId -> Array of pending messages
+const roomStates = new Map(); // roomId -> room state
 
 export function registerRoutes(app) {
   // Simple test endpoint
@@ -10,25 +11,9 @@ export function registerRoutes(app) {
     res.json({ success: true, message: "Join room test endpoint working" });
   });
 
-  // Test endpoint to verify backend is working - also handles room joining temporarily
+  // Test endpoint to verify backend is working
   app.get("/api/test", async (req, res) => {
     try {
-      // Check if this is a room join request
-      const { action, roomId, playerName } = req.query;
-      
-      if (action === 'join-room' && roomId && playerName) {
-        console.log(`Player ${playerName} joining room ${roomId}`);
-        
-        // Add client to room
-        if (!clients.has(roomId)) {
-          clients.set(roomId, new Set());
-        }
-        clients.get(roomId).add(res);
-        
-        res.json({ success: true, message: "Joined room", roomId, playerName });
-        return;
-      }
-      
       // Test Redis connection
       const testKey = "test:connection";
       await roomStorage.setRoom(testKey, { test: true, timestamp: Date.now() });
@@ -51,25 +36,103 @@ export function registerRoutes(app) {
     }
   });
 
-  // HTTP-based real-time communication endpoints
+  // Create or join a room
   app.post("/api/join-room", async (req, res) => {
     try {
       const { roomId, playerName } = req.body;
       console.log(`Player ${playerName} joining room ${roomId}`);
       
-      // Add client to room
+      // Get or create room state
+      let roomState = roomStates.get(roomId);
+      if (!roomState) {
+        roomState = {
+          id: roomId,
+          players: [],
+          status: "WAITING",
+          currentRound: 0,
+          currentPlayer: null,
+          hostId: null,
+          votes: new Map(),
+          chatHistory: [],
+          createdAt: new Date().toISOString()
+        };
+        roomStates.set(roomId, roomState);
+      }
+      
+      // Check if player already exists in room
+      const existingPlayer = roomState.players.find(p => p.name === playerName);
+      if (existingPlayer) {
+        return res.json({ 
+          success: true, 
+          message: "Rejoined room",
+          roomState,
+          isHost: existingPlayer.id === roomState.hostId
+        });
+      }
+      
+      // Add new player
+      const playerId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      const newPlayer = {
+        id: playerId,
+        name: playerName,
+        score: 0
+      };
+      
+      roomState.players.push(newPlayer);
+      
+      // Set host if first player
+      if (roomState.players.length === 1) {
+        roomState.hostId = playerId;
+      }
+      
+      // Store room state
+      roomStates.set(roomId, roomState);
+      await roomStorage.setRoom(roomId, roomState);
+      
+      // Add client to room for real-time updates
       if (!clients.has(roomId)) {
         clients.set(roomId, new Set());
       }
       clients.get(roomId).add(res);
       
       // Send immediate response
-      res.json({ success: true, message: "Joined room" });
+      res.json({ 
+        success: true, 
+        message: "Joined room",
+        roomState,
+        isHost: playerId === roomState.hostId
+      });
+      
+      // Notify other players about new player
+      notifyRoomUpdate(roomId, {
+        type: 'player_joined',
+        playerId,
+        playerName,
+        roomState
+      });
       
       // Keep connection alive for long polling
       req.on('close', () => {
         if (clients.has(roomId)) {
           clients.get(roomId).delete(res);
+        }
+        // Remove player when they disconnect
+        roomState.players = roomState.players.filter(p => p.id !== playerId);
+        if (roomState.players.length === 0) {
+          roomStates.delete(roomId);
+          clients.delete(roomId);
+          pendingMessages.delete(roomId);
+        } else {
+          // Reassign host if host left
+          if (roomState.hostId === playerId) {
+            roomState.hostId = roomState.players[0].id;
+          }
+          roomStates.set(roomId, roomState);
+          notifyRoomUpdate(roomId, {
+            type: 'player_left',
+            playerId,
+            roomState
+          });
         }
       });
       
@@ -97,15 +160,24 @@ export function registerRoutes(app) {
       }
       pendingMessages.get(roomId).push(messageData);
       
-      // Notify all clients in room
-      if (clients.has(roomId)) {
-        clients.get(roomId).forEach(clientRes => {
-          try {
-            clientRes.write(`data: ${JSON.stringify(messageData)}\n\n`);
-          } catch (e) {
-            console.error("Error sending to client:", e);
-          }
-        });
+      // Update room state if it's a room update
+      if (type === 'room_update') {
+        try {
+          const roomData = JSON.parse(message);
+          roomStates.set(roomId, roomData);
+          await roomStorage.setRoom(roomId, roomData);
+          
+          // Notify all clients about room state change
+          notifyRoomUpdate(roomId, {
+            type: 'room_update',
+            roomData
+          });
+        } catch (error) {
+          console.error("Error parsing room update:", error);
+        }
+      } else {
+        // Notify all clients about chat message
+        notifyRoomUpdate(roomId, messageData);
       }
       
       res.json({ success: true });
@@ -134,6 +206,12 @@ export function registerRoutes(app) {
       
       // Send initial connection message
       res.write(`data: ${JSON.stringify({ type: 'connected', message: 'Connected to room updates' })}\n\n`);
+      
+      // Send current room state
+      const roomState = roomStates.get(roomId);
+      if (roomState) {
+        res.write(`data: ${JSON.stringify({ type: 'room_state', roomState })}\n\n`);
+      }
       
       // Add client to room
       if (!clients.has(roomId)) {
@@ -167,6 +245,19 @@ export function registerRoutes(app) {
       res.status(500).end();
     }
   });
+
+  // Helper function to notify all clients in a room
+  function notifyRoomUpdate(roomId, data) {
+    if (clients.has(roomId)) {
+      clients.get(roomId).forEach(clientRes => {
+        try {
+          clientRes.write(`data: ${JSON.stringify(data)}\n\n`);
+        } catch (e) {
+          console.error("Error sending to client:", e);
+        }
+      });
+    }
+  }
 
   // Get room information
   app.get("/api/room/:roomId", async (req, res) => {
