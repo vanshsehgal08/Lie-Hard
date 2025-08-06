@@ -16,6 +16,7 @@ const SetGamePage = ({ player }) => {
   const router = useRouter();
   const { socket } = useSocket();
   const [roomId, setRoomId] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     console.log("SetGamePage: socket state:", socket);
@@ -56,6 +57,22 @@ const SetGamePage = ({ player }) => {
       return toast.error("Socket not connected");
     }
     if (!roomId.trim()) return toast.error("Please enter a room code");
+    
+    if (!socket.connected) {
+      console.log("SetGamePage: Socket not connected, waiting for connection...");
+      setIsConnecting(true);
+      toast.info("Connecting to server...");
+      
+      // Wait for socket to connect
+      socket.once("connect", () => {
+        console.log("SetGamePage: Socket connected, now emitting join-room");
+        setIsConnecting(false);
+        socket.emit("join-room", roomId);
+      });
+      
+      return;
+    }
+    
     console.log("SetGamePage: Emitting join-room with roomId:", roomId);
     socket.emit("join-room", roomId);
   };
@@ -68,6 +85,29 @@ const SetGamePage = ({ player }) => {
     if (!socket) {
       console.log("SetGamePage: Socket not connected");
       return toast.error("Socket not connected");
+    }
+    
+    if (!socket.connected) {
+      console.log("SetGamePage: Socket not connected, waiting for connection...");
+      setIsConnecting(true);
+      toast.info("Connecting to server...");
+      
+      // Wait for socket to connect
+      socket.once("connect", () => {
+        console.log("SetGamePage: Socket connected, now emitting make-room");
+        setIsConnecting(false);
+        socket.emit("make-room", {}, (roomId) => {
+          console.log("SetGamePage: make-room callback received roomId:", roomId);
+          if (roomId) {
+            setRoomId(roomId);
+            router.push(`/game/${roomId}`);
+          } else {
+            console.log("SetGamePage: No roomId received from make-room");
+          }
+        });
+      });
+      
+      return;
     }
     
     console.log("SetGamePage: Emitting make-room");
@@ -139,10 +179,10 @@ const SetGamePage = ({ player }) => {
                 </div>
                 <button
                   type="submit"
-                  disabled={!roomId.trim()}
+                  disabled={!roomId.trim() || isConnecting}
                   className="btn-premium w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-heading font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  Join Room
+                  {isConnecting ? "Connecting..." : "Join Room"}
                 </button>
               </form>
             </DialogContent>
@@ -151,11 +191,12 @@ const SetGamePage = ({ player }) => {
           {/* Create Room */}
           <button
             onClick={handleMakeRoom}
-            className="btn-premium w-full py-4 px-6 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-600 text-white font-heading font-semibold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 group"
+            disabled={isConnecting}
+            className="btn-premium w-full py-4 px-6 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-600 text-white font-heading font-semibold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 group disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
             <div className="flex items-center justify-center gap-3">
               <Gamepad2 className="h-5 w-5" />
-              <span>Create New Room</span>
+              <span>{isConnecting ? "Connecting..." : "Create New Room"}</span>
               <Sparkles className="h-4 w-4 opacity-60 group-hover:opacity-100 transition-opacity" />
             </div>
           </button>
