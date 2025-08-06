@@ -34,23 +34,20 @@ export const SocketProvider = ({ children }) => {
     try {
       const baseUrl = getBaseUrl();
       
-      // Join the room
-      const joinResponse = await fetch(`${baseUrl}/api/join-room`, {
-        method: 'POST',
+      // Join the room using the working test endpoint temporarily
+      const joinResponse = await fetch(`${baseUrl}/api/test?action=join-room&roomId=${roomId}&playerName=${encodeURIComponent(playerName)}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          roomId,
-          playerName
-        })
+        }
       });
 
       if (!joinResponse.ok) {
         throw new Error('Failed to join room');
       }
 
-      console.log("HTTPContext: Successfully joined room");
+      const joinData = await joinResponse.json();
+      console.log("HTTPContext: Successfully joined room:", joinData);
 
       // Set up Server-Sent Events connection
       const eventSource = new EventSource(`${baseUrl}/api/room-updates/${roomId}?playerName=${encodeURIComponent(playerName)}`);

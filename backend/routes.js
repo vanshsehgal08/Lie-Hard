@@ -10,9 +10,25 @@ export function registerRoutes(app) {
     res.json({ success: true, message: "Join room test endpoint working" });
   });
 
-  // Test endpoint to verify backend is working
+  // Test endpoint to verify backend is working - also handles room joining temporarily
   app.get("/api/test", async (req, res) => {
     try {
+      // Check if this is a room join request
+      const { action, roomId, playerName } = req.query;
+      
+      if (action === 'join-room' && roomId && playerName) {
+        console.log(`Player ${playerName} joining room ${roomId}`);
+        
+        // Add client to room
+        if (!clients.has(roomId)) {
+          clients.set(roomId, new Set());
+        }
+        clients.get(roomId).add(res);
+        
+        res.json({ success: true, message: "Joined room", roomId, playerName });
+        return;
+      }
+      
       // Test Redis connection
       const testKey = "test:connection";
       await roomStorage.setRoom(testKey, { test: true, timestamp: Date.now() });
