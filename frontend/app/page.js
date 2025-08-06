@@ -86,7 +86,7 @@ const Home = () => {
                 </li>
                 <li className="flex items-start gap-3">
                   <div className="w-2 h-2 bg-pink-400 rounded-full mt-2 flex-shrink-0"></div>
-                  <span>Take turns in the "hot seat"</span>
+                  <span>Take turns in the &quot;hot seat&quot;</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <div className="w-2 h-2 bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
