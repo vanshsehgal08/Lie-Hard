@@ -9,11 +9,11 @@ import {
   nextRound, 
   resetRoom,
   updateGameSettings,
-  GameState,
-  rooms
+  GameState
 } from "./rooms.js";
+import { roomStorage } from "./storage.js";
 
-export function registerSocketHandlers(io, rooms) {
+export function registerSocketHandlers(io) {
   io.use((socket, next) => {
     const name = socket.handshake.auth?.name;
     if (!name) {
@@ -27,9 +27,9 @@ export function registerSocketHandlers(io, rooms) {
     console.log(`User connected with id ${socket.id}`);
 
     // Create room
-    socket.on("make-room", ({ isPrivate = true }, callback) => {
+    socket.on("make-room", async ({ isPrivate = true }, callback) => {
       const roomId = nanoid(6);
-      const room = createRoom(roomId, socket.id, socket.playerName);
+      const room = await createRoom(roomId, socket.id, socket.playerName);
       socket.join(roomId);
       
       console.log(`${socket.playerName} made and joined room: ${roomId}`);
@@ -42,38 +42,39 @@ export function registerSocketHandlers(io, rooms) {
     });
 
     // Join room
-    socket.on("join-room", (roomId) => {
-      if (!rooms.has(roomId)) {
+    socket.on("join-room", async (roomId) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const result = addPlayerToRoom(roomId, socket.id, socket.playerName);
+      const result = await addPlayerToRoom(roomId, socket.id, socket.playerName);
       if (result && result.error) {
         socket.emit("room-error", result.error);
         return;
       }
       
       socket.join(roomId);
-      const room = rooms.get(roomId);
+      const updatedRoom = await roomStorage.getRoom(roomId);
       
       io.to(roomId).emit("player-joined", {
         roomId,
         player: { id: socket.id, name: socket.playerName },
-        players: room.players,
+        players: updatedRoom.players,
       });
       
       console.log(`${socket.playerName} joined room: ${roomId}`);
     });
 
     // Get users in room
-    socket.on("get-room-users", (roomId) => {
-      if (!rooms.has(roomId)) {
+    socket.on("get-room-users", async (roomId) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       socket.emit("room-users", {
         roomId,
         host: room.hostId,
@@ -83,81 +84,83 @@ export function registerSocketHandlers(io, rooms) {
     });
 
     // Update game settings (host only)
-    socket.on("update-game-settings", ({ roomId, settings }) => {
-      if (!rooms.has(roomId)) {
+    socket.on("update-game-settings", async ({ roomId, settings }) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       if (room.hostId !== socket.id) {
         socket.emit("room-error", "Only the host can update game settings");
         return;
       }
       
-      const updatedRoom = updateGameSettings(roomId, settings);
+      const updatedRoom = await updateGameSettings(roomId, settings);
       if (updatedRoom) {
         io.to(roomId).emit("game-settings-updated", updatedRoom);
       }
     });
 
     // Submit stories
-    socket.on("submit-stories", ({ roomId, stories, isTruth }) => {
-      if (!rooms.has(roomId)) {
+    socket.on("submit-stories", async ({ roomId, stories, isTruth }) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = submitStories(roomId, socket.id, stories, isTruth);
-      if (!room) {
+      const updatedRoom = await submitStories(roomId, socket.id, stories, isTruth);
+      if (!updatedRoom) {
         socket.emit("room-error", "Failed to submit stories");
         return;
       }
       
       io.to(roomId).emit("stories-submitted", {
         playerId: socket.id,
-        room: room
+        room: updatedRoom
       });
       
       // If all players have submitted, start the game
-      if (room.status === GameState.QUESTIONING) {
-        io.to(roomId).emit("game-started", room);
+      if (updatedRoom.status === GameState.QUESTIONING) {
+        io.to(roomId).emit("game-started", updatedRoom);
         startQuestioningRound(io, roomId);
       }
     });
 
     // Submit vote
-    socket.on("submit-vote", ({ roomId, guessedIndex }) => {
-      if (!rooms.has(roomId)) {
+    socket.on("submit-vote", async ({ roomId, guessedIndex }) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = submitVote(roomId, socket.id, guessedIndex);
-      if (!room) {
+      const updatedRoom = await submitVote(roomId, socket.id, guessedIndex);
+      if (!updatedRoom) {
         socket.emit("room-error", "Failed to submit vote");
         return;
       }
       
       io.to(roomId).emit("vote-submitted", {
         playerId: socket.id,
-        room: room
+        room: updatedRoom
       });
       
       // If all players have voted, start result timer
-      if (room.status === GameState.REVEAL) {
+      if (updatedRoom.status === GameState.REVEAL) {
         startResultTimer(io, roomId);
       }
     });
 
     // Start game (host only)
-    socket.on("start-game", (roomId) => {
-      if (!rooms.has(roomId)) {
+    socket.on("start-game", async (roomId) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       if (room.hostId !== socket.id) {
         socket.emit("room-error", "Only the host can start the game");
         return;
@@ -173,30 +176,30 @@ export function registerSocketHandlers(io, rooms) {
     });
 
     // Reset game
-    socket.on("reset-game", (roomId) => {
-      if (!rooms.has(roomId)) {
+    socket.on("reset-game", async (roomId) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       if (room.hostId !== socket.id) {
         socket.emit("room-error", "Only the host can reset the game");
         return;
       }
       
-      const resetRoomData = resetRoom(roomId);
+      const resetRoomData = await resetRoom(roomId);
       io.to(roomId).emit("game-reset", resetRoomData);
     });
 
     // Chat messages
-    socket.on("chat-message", ({ roomId, message }) => {
-      if (!rooms.has(roomId)) {
+    socket.on("chat-message", async ({ roomId, message }) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       const player = room.players.find(p => p.id === socket.id);
       if (!player) {
         socket.emit("room-error", "Player not found in room");
@@ -219,13 +222,13 @@ export function registerSocketHandlers(io, rooms) {
     });
 
     // WebRTC signaling for voice chat
-    socket.on("webrtc-signal", ({ roomId, targetId, signal }) => {
-      if (!rooms.has(roomId)) {
+    socket.on("webrtc-signal", async ({ roomId, targetId, signal }) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       const player = room.players.find(p => p.id === socket.id);
       if (!player) {
         socket.emit("room-error", "Player not found in room");
@@ -240,13 +243,13 @@ export function registerSocketHandlers(io, rooms) {
     });
 
     // Leave room
-    socket.on("leave-room", (roomId) => {
-      if (!rooms.has(roomId)) {
+    socket.on("leave-room", async (roomId) => {
+      const room = await roomStorage.getRoom(roomId);
+      if (!room) {
         socket.emit("room-error", "Room does not exist");
         return;
       }
       
-      const room = rooms.get(roomId);
       const player = room.players.find(p => p.id === socket.id);
       if (!player) {
         socket.emit("room-error", "Player not found in room");
@@ -254,7 +257,7 @@ export function registerSocketHandlers(io, rooms) {
       }
       
       const playerName = player.name;
-      const updatedRoom = removePlayerFromRoom(roomId, socket.id);
+      const updatedRoom = await removePlayerFromRoom(roomId, socket.id);
       
       if (!updatedRoom) {
         // Room was deleted
@@ -279,35 +282,30 @@ export function registerSocketHandlers(io, rooms) {
       socket.leave(roomId);
     });
 
-    socket.on("disconnect", () => {
-      for (const [roomId, room] of rooms.entries()) {
+    socket.on("disconnect", async () => {
+      console.log(`User disconnected with id ${socket.id}`);
+      
+      // Find all rooms this user was in and remove them
+      const allRooms = await roomStorage.getAllRooms();
+      for (const room of allRooms) {
         const wasInRoom = room.players.some(p => p.id === socket.id);
         if (wasInRoom) {
           const playerName = room.players.find(p => p.id === socket.id).name;
-          const updatedRoom = removePlayerFromRoom(roomId, socket.id);
+          const updatedRoom = await removePlayerFromRoom(room.id, socket.id);
           
           if (!updatedRoom) {
-            // Room was deleted
-            io.to(roomId).emit("room-closed", {
-              message: "Room has been closed.",
-            });
-            const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
-            for (const clientId of clients) {
-              const clientSocket = io.sockets.sockets.get(clientId);
-              if (clientSocket) {
-                clientSocket.leave(roomId);
-              }
-            }
+            // Room was deleted (no players left)
+            io.to(room.id).emit("room-deleted");
           } else {
-            io.to(roomId).emit("player-left", {
+            // Player was removed from room
+            io.to(room.id).emit("player-left", {
               playerId: socket.id,
-              playerName,
-              players: updatedRoom.players,
+              playerName: playerName,
+              room: updatedRoom
             });
           }
         }
       }
-      console.log(`User disconnected with id ${socket.id}`);
     });
   });
 }

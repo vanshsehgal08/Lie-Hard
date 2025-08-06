@@ -3,7 +3,6 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { PORT, SELF_URL } from "./config.js";
-import { rooms } from "./rooms.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
 import { registerRoutes } from "./routes.js";
 
@@ -36,8 +35,8 @@ app.use(
   })
 );
 
-registerSocketHandlers(io, rooms);
-registerRoutes(app, rooms);
+registerSocketHandlers(io);
+registerRoutes(app);
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);

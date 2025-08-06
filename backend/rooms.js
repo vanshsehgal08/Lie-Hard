@@ -11,7 +11,7 @@
 //   gameSettings: { roundTime: 120, questionTime: 30, resultTime: 10 }
 // }
 
-export const rooms = new Map();
+import { roomStorage } from './storage.js';
 
 // Game state management
 export const GameState = {
@@ -24,7 +24,7 @@ export const GameState = {
 };
 
 // Helper functions for game logic
-export const createRoom = (roomId, hostId, hostName) => {
+export const createRoom = async (roomId, hostId, hostName) => {
   const room = {
     id: roomId,
     players: [{
@@ -51,17 +51,17 @@ export const createRoom = (roomId, hostId, hostName) => {
       allowTextChat: true, // enable/disable text chat
       autoStart: false // auto-start game when room is full
     },
-    votes: new Map(), // playerId -> guessedIndex
+    votes: {}, // playerId -> guessedIndex (changed from Map to object for JSON serialization)
     chatHistory: [],
     resultTimer: null
   };
   
-  rooms.set(roomId, room);
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const addPlayerToRoom = (roomId, playerId, playerName) => {
-  const room = rooms.get(roomId);
+export const addPlayerToRoom = async (roomId, playerId, playerName) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   if (room.players.length >= room.maxPlayers) {
@@ -78,18 +78,19 @@ export const addPlayerToRoom = (roomId, playerId, playerName) => {
   };
   
   room.players.push(newPlayer);
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const removePlayerFromRoom = (roomId, playerId) => {
-  const room = rooms.get(roomId);
+export const removePlayerFromRoom = async (roomId, playerId) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   room.players = room.players.filter(p => p.id !== playerId);
   
   // If no players left, delete room
   if (room.players.length === 0) {
-    rooms.delete(roomId);
+    await roomStorage.deleteRoom(roomId);
     return null;
   }
   
@@ -98,26 +99,21 @@ export const removePlayerFromRoom = (roomId, playerId) => {
     room.hostId = room.players[0].id;
   }
   
-  // If current player left, move to next
-  if (room.currentPlayer === playerId) {
-    const currentIndex = room.players.findIndex(p => p.id === playerId);
-    const nextIndex = (currentIndex + 1) % room.players.length;
-    room.currentPlayer = room.players[nextIndex]?.id || null;
-  }
-  
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const updateGameSettings = (roomId, settings) => {
-  const room = rooms.get(roomId);
+export const updateGameSettings = async (roomId, settings) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   room.gameSettings = { ...room.gameSettings, ...settings };
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const submitStories = (roomId, playerId, stories, isTruth) => {
-  const room = rooms.get(roomId);
+export const submitStories = async (roomId, playerId, stories, isTruth) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   const player = room.players.find(p => p.id === playerId);
@@ -135,29 +131,31 @@ export const submitStories = (roomId, playerId, stories, isTruth) => {
     room.currentPlayer = room.players[0].id;
   }
   
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const submitVote = (roomId, playerId, guessedIndex) => {
-  const room = rooms.get(roomId);
+export const submitVote = async (roomId, playerId, guessedIndex) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
-  room.votes.set(playerId, guessedIndex);
+  room.votes[playerId] = guessedIndex;
   
   // Check if all players have voted
   const currentPlayer = room.players.find(p => p.id === room.currentPlayer);
   const voters = room.players.filter(p => p.id !== room.currentPlayer);
-  const allVoted = voters.every(p => room.votes.has(p.id));
+  const allVoted = voters.every(p => room.votes.hasOwnProperty(p.id));
   
   if (allVoted) {
     room.status = GameState.REVEAL;
   }
   
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const calculateScores = (roomId) => {
-  const room = rooms.get(roomId);
+export const calculateScores = async (roomId) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   const currentPlayer = room.players.find(p => p.id === room.currentPlayer);
@@ -167,7 +165,7 @@ export const calculateScores = (roomId) => {
   room.players.forEach(player => {
     if (player.id === room.currentPlayer) {
       // Player gets points for fooling others
-      const votes = Array.from(room.votes.values());
+      const votes = Object.values(room.votes);
       const correctGuesses = votes.filter(vote => vote === correctAnswer).length;
       const totalVoters = votes.length;
       const fooledCount = totalVoters - correctGuesses;
@@ -180,22 +178,23 @@ export const calculateScores = (roomId) => {
       }
     } else {
       // Voter gets points for guessing correctly
-      const vote = room.votes.get(player.id);
+      const vote = room.votes[player.id];
       if (vote === correctAnswer) {
         player.score += 1;
       }
     }
   });
   
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const nextRound = (roomId) => {
-  const room = rooms.get(roomId);
+export const nextRound = async (roomId) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   // Clear votes for next round
-  room.votes.clear();
+  room.votes = {};
   
   // Move to next player
   const currentIndex = room.players.findIndex(p => p.id === room.currentPlayer);
@@ -211,17 +210,18 @@ export const nextRound = (roomId) => {
     room.currentRound++;
   }
   
+  await roomStorage.setRoom(roomId, room);
   return room;
 };
 
-export const resetRoom = (roomId) => {
-  const room = rooms.get(roomId);
+export const resetRoom = async (roomId) => {
+  const room = await roomStorage.getRoom(roomId);
   if (!room) return null;
   
   room.status = GameState.WAITING;
   room.currentRound = 0;
   room.currentPlayer = null;
-  room.votes.clear();
+  room.votes = {};
   
   room.players.forEach(player => {
     player.stories = [];
@@ -229,5 +229,6 @@ export const resetRoom = (roomId) => {
     player.hasSubmitted = false;
   });
   
+  await roomStorage.setRoom(roomId, room);
   return room;
 };

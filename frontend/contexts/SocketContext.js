@@ -12,12 +12,27 @@ export const SocketProvider = ({ children }) => {
   const router = useRouter();
 
   const connectSocket = (playerName) => {
+    console.log("SocketContext: connectSocket called with playerName:", playerName);
     // create new socket
     if (!socket) {
       // Use environment variable for production, fallback to localhost for development
-      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
-      console.log("Connecting to socket URL:", socketUrl);
-      console.log("Environment variable NEXT_PUBLIC_SOCKET_URL:", process.env.NEXT_PUBLIC_SOCKET_URL);
+      let socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+      
+      // If no environment variable is set, detect if we're in production
+      if (!socketUrl) {
+        if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+          // We're in production, use the Vercel backend URL
+          socketUrl = "https://lie-hard-backend.vercel.app";
+          console.log("SocketContext: Detected production environment, using Vercel backend");
+        } else {
+          // We're in development, use localhost
+          socketUrl = "http://localhost:3001";
+          console.log("SocketContext: Detected development environment, using localhost");
+        }
+      }
+      
+      console.log("SocketContext: Connecting to socket URL:", socketUrl);
+      console.log("SocketContext: Environment variable NEXT_PUBLIC_SOCKET_URL:", process.env.NEXT_PUBLIC_SOCKET_URL);
       const s = io(socketUrl, {
         autoConnect: false,
         reconnection: true,
@@ -28,21 +43,32 @@ export const SocketProvider = ({ children }) => {
         auth: { name: playerName },
       });
 
+      console.log("SocketContext: Socket created, attempting to connect...");
       s.connect();
       setSocket(s);
       setPlayer(playerName);
 
       s.on("connect", () => {
-        console.log("Socket connected", s.id);
+        console.log("SocketContext: Socket connected successfully", s.id);
+      });
+
+      s.on("connect_error", (error) => {
+        console.error("SocketContext: Socket connection error:", error);
       });
 
       s.on("disconnect", () => {
-        console.log("Socket disconnected", s.id);
+        console.log("SocketContext: Socket disconnected", s.id);
       });
 
       s.on("reconnect", (attemptNumber) => {
-        console.log("Socket reconnected after", attemptNumber, "attempts");
+        console.log("SocketContext: Socket reconnected after", attemptNumber, "attempts");
       });
+
+      s.on("reconnect_error", (error) => {
+        console.error("SocketContext: Socket reconnection error:", error);
+      });
+    } else {
+      console.log("SocketContext: Socket already exists, not creating new one");
     }
   };
 

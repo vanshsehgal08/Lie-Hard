@@ -18,11 +18,17 @@ const SetGamePage = ({ player }) => {
   const [roomId, setRoomId] = useState("");
 
   useEffect(() => {
+    console.log("SetGamePage: socket state:", socket);
+    console.log("SetGamePage: socket connected:", socket?.connected);
+    console.log("SetGamePage: environment variable:", process.env.NEXT_PUBLIC_SOCKET_URL);
+    
     if (!socket) {
+      console.log("SetGamePage: No socket available");
       return;
     }
 
     const handlePlayerJoined = ({ roomId, player, players }) => {
+      console.log("SetGamePage: player-joined event received:", { roomId, player, players });
       if (player.id === socket.id) {
         router.push(`/game/${roomId}`);
       }
@@ -30,6 +36,7 @@ const SetGamePage = ({ player }) => {
     socket.on("player-joined", handlePlayerJoined);
 
     const handleRoomError = (error) => {
+      console.log("SetGamePage: room-error event received:", error);
       toast.error(error);
       return;
     };
@@ -43,17 +50,34 @@ const SetGamePage = ({ player }) => {
 
   const handleJoinRoom = (e) => {
     e.preventDefault();
-    if (!socket) return toast.error("Socket not connected");
+    console.log("SetGamePage: handleJoinRoom called");
+    if (!socket) {
+      console.log("SetGamePage: Socket not connected");
+      return toast.error("Socket not connected");
+    }
     if (!roomId.trim()) return toast.error("Please enter a room code");
+    console.log("SetGamePage: Emitting join-room with roomId:", roomId);
     socket.emit("join-room", roomId);
   };
 
   const handleMakeRoom = () => {
-    if (!socket) return toast.error("Socket not connected");
+    console.log("SetGamePage: handleMakeRoom called");
+    console.log("SetGamePage: Socket state:", socket);
+    console.log("SetGamePage: Socket connected:", socket?.connected);
+    
+    if (!socket) {
+      console.log("SetGamePage: Socket not connected");
+      return toast.error("Socket not connected");
+    }
+    
+    console.log("SetGamePage: Emitting make-room");
     socket.emit("make-room", {}, (roomId) => {
+      console.log("SetGamePage: make-room callback received roomId:", roomId);
       if (roomId) {
         setRoomId(roomId);
         router.push(`/game/${roomId}`);
+      } else {
+        console.log("SetGamePage: No roomId received from make-room");
       }
     });
   };
