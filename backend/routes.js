@@ -26,6 +26,15 @@ export function registerRoutes(app, rooms) {
     }
   });
 
+  // Socket.IO test endpoint
+  app.get("/api/socket-test", (req, res) => {
+    res.json({
+      status: "OK",
+      message: "Socket.IO endpoint is accessible",
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Get room information
   app.get("/api/room/:roomId", async (req, res) => {
     const { roomId } = req.params;

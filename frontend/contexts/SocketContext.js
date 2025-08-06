@@ -36,11 +36,16 @@ export const SocketProvider = ({ children }) => {
       const s = io(socketUrl, {
         autoConnect: false,
         reconnection: true,
-        reconnectionAttempts: Infinity,
+        reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 20000,
         auth: { name: playerName },
+        // Vercel-compatible settings - polling only
+        transports: ["polling"],
+        path: "/socket.io/",
+        forceNew: true,
+        upgrade: false
       });
 
       console.log("SocketContext: Socket created, attempting to connect...");
@@ -66,6 +71,10 @@ export const SocketProvider = ({ children }) => {
 
       s.on("reconnect_error", (error) => {
         console.error("SocketContext: Socket reconnection error:", error);
+      });
+
+      s.on("reconnect_failed", () => {
+        console.error("SocketContext: Socket reconnection failed");
       });
     } else {
       console.log("SocketContext: Socket already exists, not creating new one");

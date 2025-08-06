@@ -23,10 +23,14 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ["websocket", "polling"],
+  transports: ["polling"], // Use polling only for Vercel compatibility
   allowEIO3: true,
-  allowUpgrades: true,
-  maxHttpBufferSize: 1e8
+  allowUpgrades: false, // Disable upgrades for Vercel
+  maxHttpBufferSize: 1e8,
+  // Vercel-specific settings
+  path: "/socket.io/",
+  serveClient: false,
+  connectTimeout: 45000
 });
 
 app.use(express.json());
