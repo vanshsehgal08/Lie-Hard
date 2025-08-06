@@ -1,6 +1,6 @@
 import { roomStorage } from './storage.js';
 
-export function registerRoutes(app, rooms) {
+export function registerRoutes(app) {
   // Test endpoint to verify backend is working
   app.get("/api/test", async (req, res) => {
     try {
@@ -24,15 +24,6 @@ export function registerRoutes(app, rooms) {
         error: error.message 
       });
     }
-  });
-
-  // Socket.IO test endpoint
-  app.get("/api/socket-test", (req, res) => {
-    res.json({
-      status: "OK",
-      message: "Socket.IO endpoint is accessible",
-      timestamp: new Date().toISOString()
-    });
   });
 
   // Get room information

@@ -14,72 +14,45 @@ import { Users, Gamepad2, Copy, Sparkles, Crown } from "lucide-react";
 
 const SetGamePage = ({ player }) => {
   const router = useRouter();
-  const { socket } = useSocket();
+  const { isConnected, connectToRoom, currentRoom } = useSocket();
   const [roomId, setRoomId] = useState("");
 
   useEffect(() => {
-    console.log("SetGamePage: socket state:", socket);
-    console.log("SetGamePage: socket connected:", socket?.connected);
+    console.log("SetGamePage: connection state:", isConnected);
+    console.log("SetGamePage: current room:", currentRoom);
     console.log("SetGamePage: environment variable:", process.env.NEXT_PUBLIC_SOCKET_URL);
-    
-    if (!socket) {
-      console.log("SetGamePage: No socket available");
-      return;
-    }
+  }, [isConnected, currentRoom]);
 
-    const handlePlayerJoined = ({ roomId, player, players }) => {
-      console.log("SetGamePage: player-joined event received:", { roomId, player, players });
-      if (player.id === socket.id) {
-        router.push(`/game/${roomId}`);
-      }
-    };
-    socket.on("player-joined", handlePlayerJoined);
-
-    const handleRoomError = (error) => {
-      console.log("SetGamePage: room-error event received:", error);
-      toast.error(error);
-      return;
-    };
-    socket.on("room-error", handleRoomError);
-
-    return () => {
-      socket.off("room-error", handleRoomError);
-      socket.off("player-joined", handlePlayerJoined);
-    };
-  }, [socket]);
-
-  const handleJoinRoom = (e) => {
+  const handleJoinRoom = async (e) => {
     e.preventDefault();
     console.log("SetGamePage: handleJoinRoom called");
-    if (!socket) {
-      console.log("SetGamePage: Socket not connected");
-      return toast.error("Socket not connected");
-    }
     if (!roomId.trim()) return toast.error("Please enter a room code");
-    console.log("SetGamePage: Emitting join-room with roomId:", roomId);
-    socket.emit("join-room", roomId);
+    
+    try {
+      console.log("SetGamePage: Connecting to room:", roomId);
+      await connectToRoom(player, roomId);
+      router.push(`/game/${roomId}`);
+    } catch (error) {
+      console.error("SetGamePage: Error joining room:", error);
+      toast.error("Failed to join room");
+    }
   };
 
-  const handleMakeRoom = () => {
+  const handleMakeRoom = async () => {
     console.log("SetGamePage: handleMakeRoom called");
-    console.log("SetGamePage: Socket state:", socket);
-    console.log("SetGamePage: Socket connected:", socket?.connected);
     
-    if (!socket) {
-      console.log("SetGamePage: Socket not connected");
-      return toast.error("Socket not connected");
+    try {
+      // Generate a random room ID
+      const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      console.log("SetGamePage: Creating room with ID:", newRoomId);
+      
+      await connectToRoom(player, newRoomId);
+      setRoomId(newRoomId);
+      router.push(`/game/${newRoomId}`);
+    } catch (error) {
+      console.error("SetGamePage: Error creating room:", error);
+      toast.error("Failed to create room");
     }
-    
-    console.log("SetGamePage: Emitting make-room");
-    socket.emit("make-room", {}, (roomId) => {
-      console.log("SetGamePage: make-room callback received roomId:", roomId);
-      if (roomId) {
-        setRoomId(roomId);
-        router.push(`/game/${roomId}`);
-      } else {
-        console.log("SetGamePage: No roomId received from make-room");
-      }
-    });
   };
 
   return (
@@ -100,73 +73,55 @@ const SetGamePage = ({ player }) => {
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="space-y-4">
-          {/* Join Room */}
-          <Dialog>
-            <DialogTrigger className="w-full">
-              <div className="btn-premium w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-heading font-semibold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 group">
-                <div className="flex items-center justify-center gap-3">
-                  <Users className="h-5 w-5" />
-                  <span>Join Existing Room</span>
-                  <Sparkles className="h-4 w-4 opacity-60 group-hover:opacity-100 transition-opacity" />
-                </div>
-              </div>
-            </DialogTrigger>
-            <DialogContent className="glass-premium border border-purple-500/20">
-              <DialogHeader>
-                <DialogTitle className="font-heading text-2xl font-bold gradient-premium-text">
-                  Join a Room
-                </DialogTitle>
-                <DialogDescription className="text-gray-400">
-                  Enter the room code provided by your friend
-                </DialogDescription>
-              </DialogHeader>
-              <form className="flex flex-col gap-4" onSubmit={handleJoinRoom}>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Gamepad2 className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="text"
-                    value={roomId}
-                    onChange={(e) => setRoomId(e.target.value)}
-                    autoFocus
-                    placeholder="Enter room code"
-                    className="input-premium w-full pl-12 pr-4 py-4 text-lg font-medium text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
-                    maxLength={6}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!roomId.trim()}
-                  className="btn-premium w-full py-3 px-6 bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-heading font-semibold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg hover:shadow-xl transition-all duration-300"
-                >
-                  Join Room
-                </button>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          {/* Create Room */}
-          <button
-            onClick={handleMakeRoom}
-            className="btn-premium w-full py-4 px-6 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-600 text-white font-heading font-semibold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 group"
-          >
-            <div className="flex items-center justify-center gap-3">
-              <Gamepad2 className="h-5 w-5" />
-              <span>Create New Room</span>
-              <Sparkles className="h-4 w-4 opacity-60 group-hover:opacity-100 transition-opacity" />
-            </div>
-          </button>
+        {/* Connection Status */}
+        <div className="flex items-center justify-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+          <span className="text-sm text-gray-400">
+            {isConnected ? 'Connected' : 'Disconnected'}
+          </span>
         </div>
 
-        {/* Premium Features */}
-        <div className="pt-6 border-t border-gray-700/50">
-          <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
-            <Sparkles className="h-4 w-4 text-purple-400" />
-            <span className="font-medium">Premium Multiplayer Experience</span>
-            <Sparkles className="h-4 w-4 text-purple-400" />
+        {/* Action Buttons */}
+        <div className="space-y-4">
+          {/* Create Room Button */}
+          <button
+            onClick={handleMakeRoom}
+            className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
+          >
+            <Sparkles className="h-5 w-5" />
+            Create New Room
+          </button>
+
+          {/* Join Room Section */}
+          <div className="space-y-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Enter Room Code"
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                className="w-full bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-300"
+              />
+            </div>
+            <button
+              onClick={handleJoinRoom}
+              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
+            >
+              <Gamepad2 className="h-5 w-5" />
+              Join Room
+            </button>
+          </div>
+        </div>
+
+        {/* Features */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4">
+          <div className="flex items-center gap-3 text-gray-400">
+            <Users className="h-5 w-5 text-purple-500" />
+            <span className="text-sm">Multiplayer</span>
+          </div>
+          <div className="flex items-center gap-3 text-gray-400">
+            <Copy className="h-5 w-5 text-blue-500" />
+            <span className="text-sm">Easy Sharing</span>
           </div>
         </div>
       </div>
