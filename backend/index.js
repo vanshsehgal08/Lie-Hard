@@ -6,11 +6,16 @@ import { PORT, SELF_URL } from "./config.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
 import { registerRoutes } from "./routes.js";
 
-const allowedOrigins = [
-  "http://localhost:3000", // dev frontend
-  "https://lie-hard.vercel.app", // deployed frontend
-  "https://wit-link.vercel.app", // old frontend (keeping for backward compatibility)
-];
+// For development, allow all origins from local network
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const allowedOrigins = isDevelopment 
+  ? true // Allow all origins in development
+  : [
+      "http://localhost:3000", // dev frontend
+      "https://lie-hard.vercel.app", // deployed frontend
+      "https://wit-link.vercel.app", // old frontend (keeping for backward compatibility)
+      "https://lie-hard.onrender.com", // Render backend
+    ];
 
 const app = express();
 const server = createServer(app);
@@ -23,11 +28,10 @@ const io = new Server(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
-  transports: ["polling"], // Use polling only for Vercel compatibility
+  transports: ["polling", "websocket"], // Enable both polling and WebSocket for Render
   allowEIO3: true,
-  allowUpgrades: false, // Disable upgrades for Vercel
+  allowUpgrades: true, // Enable upgrades for Render
   maxHttpBufferSize: 1e8,
-  // Vercel-specific settings
   path: "/socket.io/",
   serveClient: false,
   connectTimeout: 45000
@@ -46,8 +50,8 @@ app.use(
 registerSocketHandlers(io);
 registerRoutes(app);
 
-server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on port ${PORT} and accessible from network`);
 });
 
 // Self pinging for health check

@@ -20,14 +20,21 @@ export const SocketProvider = ({ children }) => {
       
       // If no environment variable is set, detect if we're in production
       if (!socketUrl) {
+        if (typeof window !== 'undefined') {
+          console.log("SocketContext: Window location:", window.location.href);
+          console.log("SocketContext: Hostname:", window.location.hostname);
+          console.log("SocketContext: Port:", window.location.port);
+        }
+        
         if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-          // We're in production, use the Vercel backend URL
-          socketUrl = "https://lie-hard-backend.vercel.app";
-          console.log("SocketContext: Detected production environment, using Vercel backend");
+          // We're in production, use the Render backend URL
+          socketUrl = "https://lie-hard.onrender.com";
+          console.log("SocketContext: Detected production environment, using Render backend");
         } else {
-          // We're in development, use localhost
-          socketUrl = "http://localhost:3001";
-          console.log("SocketContext: Detected development environment, using localhost");
+          // We're in development, use the same hostname as the frontend
+          const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+          socketUrl = `http://${hostname}:3001`;
+          console.log("SocketContext: Detected development environment, using hostname:", hostname);
         }
       }
       
@@ -41,11 +48,11 @@ export const SocketProvider = ({ children }) => {
         reconnectionDelayMax: 5000,
         timeout: 20000,
         auth: { name: playerName },
-        // Vercel-compatible settings - polling only
-        transports: ["polling"],
+        // Render-compatible settings - both polling and WebSocket
+        transports: ["polling", "websocket"],
         path: "/socket.io/",
         forceNew: true,
-        upgrade: false
+        upgrade: true
       });
 
       console.log("SocketContext: Socket created, attempting to connect...");

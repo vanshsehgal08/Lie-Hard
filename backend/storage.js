@@ -1,4 +1,4 @@
-import { createClient } from 'redis';
+import { createClient } from '@redis/client';
 
 // Fallback to in-memory storage for development
 const isDevelopment = process.env.NODE_ENV !== 'production';
