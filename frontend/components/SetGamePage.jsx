@@ -107,6 +107,15 @@ const SetGamePage = ({ player }) => {
         });
       });
       
+      // Also handle connection timeout
+      setTimeout(() => {
+        if (!socket.connected) {
+          console.log("SetGamePage: Connection timeout");
+          setIsConnecting(false);
+          toast.error("Connection timeout. Please try again.");
+        }
+      }, 10000);
+      
       return;
     }
     

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { createContext, useContext, useState } from "react";
 import { io } from "socket.io-client";
+import { toast } from "sonner";
 
 const SocketContext = createContext();
 
@@ -73,6 +74,11 @@ export const SocketProvider = ({ children }) => {
           description: error.description,
           context: error.context
         });
+        
+        // Show user-friendly error message
+        if (typeof window !== 'undefined') {
+          toast.error("Failed to connect to server. Please check your connection and try again.");
+        }
       });
 
       s.on("disconnect", () => {
