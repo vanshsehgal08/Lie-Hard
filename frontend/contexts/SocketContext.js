@@ -19,13 +19,19 @@ export const SocketProvider = ({ children }) => {
     let baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
     
     if (!baseUrl) {
-      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-        baseUrl = "https://lie-hard-backend.vercel.app";
-        console.log("HTTPContext: Detected production environment, using Vercel backend");
-      } else {
+      // For development, always use localhost
+      if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
         baseUrl = "http://localhost:3001";
         console.log("HTTPContext: Detected development environment, using localhost");
+      } else {
+        baseUrl = "https://lie-hard-backend.vercel.app";
+        console.log("HTTPContext: Detected production environment, using Vercel backend");
       }
+    }
+    
+    // Force localhost for testing
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      baseUrl = "http://localhost:3001";
     }
     
     return baseUrl;
