@@ -40,13 +40,15 @@ export const SocketProvider = ({ children }) => {
       
       console.log("SocketContext: Connecting to socket URL:", socketUrl);
       console.log("SocketContext: Environment variable NEXT_PUBLIC_SOCKET_URL:", process.env.NEXT_PUBLIC_SOCKET_URL);
+      console.log("SocketContext: Current window location:", typeof window !== 'undefined' ? window.location.href : 'server-side');
+      console.log("SocketContext: Current hostname:", typeof window !== 'undefined' ? window.location.hostname : 'server-side');
       const s = io(socketUrl, {
         autoConnect: false,
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
-        timeout: 20000,
+        timeout: 10000, // Reduced timeout
         auth: { name: playerName },
         // Render-compatible settings - both polling and WebSocket
         transports: ["polling", "websocket"],
@@ -66,6 +68,11 @@ export const SocketProvider = ({ children }) => {
 
       s.on("connect_error", (error) => {
         console.error("SocketContext: Socket connection error:", error);
+        console.error("SocketContext: Error details:", {
+          message: error.message,
+          description: error.description,
+          context: error.context
+        });
       });
 
       s.on("disconnect", () => {

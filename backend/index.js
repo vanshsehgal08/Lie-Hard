@@ -15,6 +15,9 @@ const allowedOrigins = isDevelopment
       "https://lie-hard.vercel.app", // deployed frontend
       "https://wit-link.vercel.app", // old frontend (keeping for backward compatibility)
       "https://lie-hard.onrender.com", // Render backend
+      // Allow all Vercel domains
+      /^https:\/\/.*\.vercel\.app$/,
+      /^https:\/\/.*\.vercel\.app\/.*$/,
     ];
 
 const app = express();
