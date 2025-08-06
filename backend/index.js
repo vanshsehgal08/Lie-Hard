@@ -17,21 +17,25 @@ const server = createServer(app);
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
   },
   pingTimeout: 60000,
   pingInterval: 25000,
   transports: ["websocket", "polling"],
   allowEIO3: true,
+  allowUpgrades: true,
+  maxHttpBufferSize: 1e8
 });
 
 app.use(express.json());
 app.use(
   cors({
     origin: allowedOrigins,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 

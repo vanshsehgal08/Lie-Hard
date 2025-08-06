@@ -28,43 +28,71 @@ export function registerSocketHandlers(io) {
 
     // Create room
     socket.on("make-room", async ({ isPrivate = true }, callback) => {
-      const roomId = nanoid(6);
-      const room = await createRoom(roomId, socket.id, socket.playerName);
-      socket.join(roomId);
+      console.log(`Make room request by ${socket.playerName}`);
       
-      console.log(`${socket.playerName} made and joined room: ${roomId}`);
-      
-      if (callback) {
-        callback(roomId);
+      try {
+        const roomId = nanoid(6);
+        console.log(`Generated room ID: ${roomId}`);
+        
+        const room = await createRoom(roomId, socket.id, socket.playerName);
+        console.log(`Room created successfully: ${roomId}`);
+        
+        socket.join(roomId);
+        
+        console.log(`${socket.playerName} made and joined room: ${roomId}`);
+        
+        if (callback) {
+          callback(roomId);
+        }
+        
+        io.to(roomId).emit("room-joined", room);
+      } catch (error) {
+        console.error(`Error in make-room handler:`, error);
+        if (callback) {
+          callback(null);
+        }
+        socket.emit("room-error", "Failed to create room");
       }
-      
-      io.to(roomId).emit("room-joined", room);
     });
 
     // Join room
     socket.on("join-room", async (roomId) => {
-      const room = await roomStorage.getRoom(roomId);
-      if (!room) {
-        socket.emit("room-error", "Room does not exist");
-        return;
+      console.log(`Join room request: ${roomId} by ${socket.playerName}`);
+      
+      try {
+        const room = await roomStorage.getRoom(roomId);
+        console.log(`Room lookup result for ${roomId}:`, room ? 'Found' : 'Not found');
+        
+        if (!room) {
+          console.log(`Room ${roomId} does not exist`);
+          socket.emit("room-error", "Room does not exist");
+          return;
+        }
+        
+        console.log(`Attempting to add player ${socket.playerName} to room ${roomId}`);
+        const result = await addPlayerToRoom(roomId, socket.id, socket.playerName);
+        
+        if (result && result.error) {
+          console.log(`Error adding player to room: ${result.error}`);
+          socket.emit("room-error", result.error);
+          return;
+        }
+        
+        socket.join(roomId);
+        const updatedRoom = await roomStorage.getRoom(roomId);
+        console.log(`Player ${socket.playerName} successfully joined room ${roomId}`);
+        
+        io.to(roomId).emit("player-joined", {
+          roomId,
+          player: { id: socket.id, name: socket.playerName },
+          players: updatedRoom.players,
+        });
+        
+        console.log(`${socket.playerName} joined room: ${roomId}`);
+      } catch (error) {
+        console.error(`Error in join-room handler:`, error);
+        socket.emit("room-error", "Server error occurred while joining room");
       }
-      
-      const result = await addPlayerToRoom(roomId, socket.id, socket.playerName);
-      if (result && result.error) {
-        socket.emit("room-error", result.error);
-        return;
-      }
-      
-      socket.join(roomId);
-      const updatedRoom = await roomStorage.getRoom(roomId);
-      
-      io.to(roomId).emit("player-joined", {
-        roomId,
-        player: { id: socket.id, name: socket.playerName },
-        players: updatedRoom.players,
-      });
-      
-      console.log(`${socket.playerName} joined room: ${roomId}`);
     });
 
     // Get users in room
