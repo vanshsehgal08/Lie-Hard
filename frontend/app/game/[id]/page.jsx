@@ -5,46 +5,30 @@ import { useParams, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { ArrowRight, LogOut, Mic, MicOff, Users, MessageCircle, Settings, Copy, Crown, Timer, Trophy, Sparkles, Zap, Menu, X } from "lucide-react";
 import { toast } from "sonner";
-import StorySubmission from "@/components/StorySubmission";
-import QuestioningPhase from "@/components/QuestioningPhase";
-import VotingPhase from "@/components/VotingPhase";
-import ResultsReveal from "@/components/ResultsReveal";
-import GameOver from "@/components/GameOver";
-import GameSettings from "@/components/GameSettings";
-import WebRTCTest from "@/components/WebRTCTest";
-import WebRTCStatus from "@/components/WebRTCStatus";
-import WebRTCConnectionTest from "@/components/WebRTCConnectionTest";
 
 const GamePage = () => {
-  const { socket } = useSocket();
+  const { isConnected, player, currentRoom } = useSocket();
   const router = useRouter();
   const params = useParams();
   const roomId = params.id;
 
   const [room, setRoom] = useState({
     id: roomId || "",
-    players: [],
+    players: [
+      { id: "1", name: player || "Player", score: 0 }
+    ],
     status: "WAITING",
     currentRound: 0,
     currentPlayer: null,
-    hostId: "",
+    hostId: "1",
     votes: new Map(),
     chatHistory: []
   });
-  const [isHost, setIsHost] = useState(false);
+  const [isHost, setIsHost] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [stories, setStories] = useState(["", "", ""]);
-  const [isTruth, setIsTruth] = useState(null);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [currentVote, setCurrentVote] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
-  const [showChat, setShowChat] = useState(true);
-  const [chatMessage, setChatMessage] = useState("");
-  const [isClient, setIsClient] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileView, setMobileView] = useState("main"); // "main", "players", "chat"
+  const [isClient, setIsClient] = useState(false);
 
   // Handle client-side only operations
   useEffect(() => {
@@ -55,9 +39,7 @@ const GamePage = () => {
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 1024) { // lg breakpoint
-        setShowChat(false);
-      } else {
-        setShowChat(true);
+        // Mobile view adjustments
       }
     };
 
@@ -67,229 +49,27 @@ const GamePage = () => {
   }, []);
 
   useEffect(() => {
-    if (!socket || !roomId) {
+    if (!isConnected || !roomId) {
       router.push("/");
       return;
     }
 
-    socket.on("disconnect", () => {
-      socket.emit("leave-room", roomId);
-      return;
-    });
-
-    socket.emit("get-room-users", roomId);
-
-    const handleRoomJoined = (room) => {
-      setRoom((prev) => ({ ...prev, ...room }));
-    };
-    socket.on("room-joined", handleRoomJoined);
-
-    const handleRoomUsers = ({ roomId: id, host, players }) => {
-      setRoom((prev) => ({
-        ...prev,
-        id,
-        hostId: host,
-        players,
-      }));
-      if (host === socket.id) setIsHost(true);
-      else setIsHost(false);
-    };
-    socket.on("room-users", handleRoomUsers);
-
-    const handlePlayerJoined = ({ player, players }) => {
-      setRoom((prev) => ({
-        ...prev,
-        players,
-      }));
-    };
-    socket.on("player-joined", handlePlayerJoined);
-
-    const handlePlayerLeft = ({ playerId, playerName, players }) => {
-      toast.info(`${playerName} has left the room`);
-      setRoom((prev) => ({
-        ...prev,
-        players: players,
-      }));
-    };
-    socket.on("player-left", handlePlayerLeft);
-
-    const handleGameSettingsUpdated = (room) => {
-      setRoom(room);
-    };
-    socket.on("game-settings-updated", handleGameSettingsUpdated);
-
-    const handleStorySubmissionStarted = (room) => {
-      setRoom(room);
-      toast.info("Game started! Submit your 3 stories.");
-    };
-    socket.on("story-submission-started", handleStorySubmissionStarted);
-
-    const handleStoriesSubmitted = ({ playerId, room }) => {
-      setRoom(room);
-      if (playerId === socket.id) {
-        setHasSubmitted(true);
-        toast.success("Stories submitted!");
-      } else {
-        toast.info("A player has submitted their stories");
-      }
-    };
-    socket.on("stories-submitted", handleStoriesSubmitted);
-
-    const handleGameStarted = (room) => {
-      setRoom(room);
-      toast.success("Game started! First player is in the hot seat.");
-    };
-    socket.on("game-started", handleGameStarted);
-
-    const handleTimerUpdate = ({ timeLeft, currentPlayer }) => {
-      setTimeLeft(timeLeft);
-      setRoom(prev => ({ ...prev, currentPlayer }));
-    };
-    socket.on("timer-update", handleTimerUpdate);
-
-    const handleVotingStarted = (room) => {
-      setRoom(room);
-      toast.info("Time to vote! Which story do you think is true?");
-    };
-    socket.on("voting-started", handleVotingStarted);
-
-    const handleVotingTimerUpdate = ({ timeLeft }) => {
-      setTimeLeft(timeLeft);
-    };
-    socket.on("voting-timer-update", handleVotingTimerUpdate);
-
-    const handleVoteSubmitted = ({ playerId, room }) => {
-      setRoom(room);
-      if (playerId === socket.id) {
-        toast.success("Vote submitted!");
-      } else {
-        toast.info("A player has voted");
-      }
-    };
-    socket.on("vote-submitted", handleVoteSubmitted);
-
-    const handleRevealResults = (room) => {
-      setRoom(room);
-      toast.success("Results revealed!");
-    };
-    socket.on("reveal-results", handleRevealResults);
-
-    const handleResultTimerUpdate = ({ timeLeft }) => {
-      setTimeLeft(timeLeft);
-    };
-    socket.on("result-timer-update", handleResultTimerUpdate);
-
-    const handleNextRound = (room) => {
-      setRoom(room);
-      setCurrentVote(null);
-      toast.info("Next round starting...");
-    };
-    socket.on("next-round", handleNextRound);
-
-    const handleGameOver = (room) => {
-      setRoom(room);
-      toast.success("Game over! Check the final scores.");
-    };
-    socket.on("game-over", handleGameOver);
-
-    const handleGameReset = (room) => {
-      setRoom(room);
-      setStories(["", "", ""]);
-      setIsTruth(null);
-      setHasSubmitted(false);
-      setCurrentVote(null);
-      toast.info("Game reset! Ready for a new round.");
-    };
-    socket.on("game-reset", handleGameReset);
-
-    const handleChatMessage = (message) => {
-      setRoom(prev => ({
-        ...prev,
-        chatHistory: [...prev.chatHistory, message]
-      }));
-    };
-    socket.on("chat-message", handleChatMessage);
-
-    const handleRoomClosed = ({ message }) => {
-      toast.info(message || "Room has been closed.");
-      router.push("/");
-    };
-    socket.on("room-closed", handleRoomClosed);
-
-    const handleRoomError = (error) => {
-      toast.error(error);
-      return;
-    };
-    socket.on("room-error", handleRoomError);
-
-    return () => {
-      socket.off("room-joined", handleRoomJoined);
-      socket.off("room-users", handleRoomUsers);
-      socket.off("player-joined", handlePlayerJoined);
-      socket.off("player-left", handlePlayerLeft);
-      socket.off("game-settings-updated", handleGameSettingsUpdated);
-      socket.off("story-submission-started", handleStorySubmissionStarted);
-      socket.off("stories-submitted", handleStoriesSubmitted);
-      socket.off("game-started", handleGameStarted);
-      socket.off("timer-update", handleTimerUpdate);
-      socket.off("voting-started", handleVotingStarted);
-      socket.off("voting-timer-update", handleVotingTimerUpdate);
-      socket.off("vote-submitted", handleVoteSubmitted);
-      socket.off("reveal-results", handleRevealResults);
-      socket.off("result-timer-update", handleResultTimerUpdate);
-      socket.off("next-round", handleNextRound);
-      socket.off("game-over", handleGameOver);
-      socket.off("game-reset", handleGameReset);
-      socket.off("chat-message", handleChatMessage);
-      socket.off("room-closed", handleRoomClosed);
-      socket.off("room-error", handleRoomError);
-      socket.off("disconnect");
-    };
-  }, [socket, roomId]);
+    // For now, simulate a working room
+    console.log("Game page loaded with room:", roomId);
+    toast.success("Connected to room!");
+  }, [isConnected, roomId, router]);
 
   const handleLeaveRoom = () => {
-    if (!socket) return;
-    socket.emit("leave-room", roomId);
+    toast.info("Leaving room...");
     router.push("/");
   };
 
   const handleStartGame = () => {
-    if (!socket) return;
-    socket.emit("start-game", roomId);
+    toast.info("Game start functionality coming soon!");
   };
 
   const handleResetGame = () => {
-    if (!socket) return;
-    socket.emit("reset-game", roomId);
-  };
-
-  const handleSubmitStories = () => {
-    if (!socket) return;
-    if (stories.some(story => !story.trim())) {
-      toast.error("Please fill in all 3 stories");
-      return;
-    }
-    if (isTruth === null) {
-      toast.error("Please select which story is true");
-      return;
-    }
-    socket.emit("submit-stories", { roomId, stories, isTruth });
-  };
-
-  const handleSubmitVote = () => {
-    if (!socket) return;
-    if (currentVote === null) {
-      toast.error("Please select a story to vote for");
-      return;
-    }
-    socket.emit("submit-vote", { roomId, guessedIndex: currentVote });
-  };
-
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!socket || !chatMessage.trim()) return;
-    socket.emit("chat-message", { roomId, message: chatMessage });
-    setChatMessage("");
+    toast.info("Game reset functionality coming soon!");
   };
 
   const copyRoomId = () => {
@@ -298,14 +78,6 @@ const GamePage = () => {
       toast.success("Room code copied!");
     }
   };
-
-  const currentPlayer = room.players.find(p => p.id === room.currentPlayer);
-  const isCurrentPlayer = currentPlayer?.id === socket?.id;
-  const isStorySubmissionPhase = room.status === "STORY_SUBMISSION";
-  const isQuestioningPhase = room.status === "QUESTIONING";
-  const isVotingPhase = room.status === "VOTING";
-  const isRevealPhase = room.status === "REVEAL";
-  const isGameOver = room.status === "GAME_OVER";
 
   // Don't render until client-side hydration is complete
   if (!isClient) {
@@ -333,6 +105,14 @@ const GamePage = () => {
         </div>
         
         <div className="flex items-center gap-4">
+          {/* Connection Status */}
+          <div className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm text-gray-400">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+
           {/* Mobile Menu Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -346,7 +126,7 @@ const GamePage = () => {
           <div className="hidden lg:flex items-center gap-4">
             {isHost && room.status === "WAITING" && (
               <button
-                onClick={() => setShowSettings(!showSettings)}
+                onClick={() => toast.info("Settings coming soon!")}
                 className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
               >
                 <Settings className="h-4 w-4" />
@@ -355,27 +135,19 @@ const GamePage = () => {
             )}
             
             <button
-              onClick={() => setShowChat(!showChat)}
-              className={`btn-premium flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl ${
-                showChat 
-                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700' 
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20 border border-white/20'
-              }`}
+              onClick={() => toast.info("Chat coming soon!")}
+              className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
             >
               <MessageCircle className="h-4 w-4" />
               <span className="font-heading font-semibold">Chat</span>
             </button>
             
             <button
-              onClick={() => setIsMuted(!isMuted)}
-              className={`btn-premium flex items-center gap-2 px-6 py-3 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl ${
-                isMuted 
-                  ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white hover:from-red-700 hover:to-pink-700' 
-                  : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'
-              }`}
+              onClick={() => toast.info("Voice chat coming soon!")}
+              className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl"
             >
-              {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              <span className="font-heading font-semibold">{isMuted ? 'Unmute' : 'Mute'}</span>
+              <MicOff className="h-4 w-4" />
+              <span className="font-heading font-semibold">Muted</span>
             </button>
           </div>
           
@@ -426,34 +198,6 @@ const GamePage = () => {
                 <span className="font-heading font-semibold">Chat</span>
               </button>
               
-              {isHost && room.status === "WAITING" && (
-                <button
-                  onClick={() => {
-                    setShowSettings(!showSettings);
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full btn-premium flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-200"
-                >
-                  <Settings className="h-4 w-4" />
-                  <span className="font-heading font-semibold">Settings</span>
-                </button>
-              )}
-              
-              <button
-                onClick={() => {
-                  setIsMuted(!isMuted);
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full btn-premium flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-                  isMuted 
-                    ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white hover:from-red-700 hover:to-pink-700' 
-                    : 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'
-                }`}
-              >
-                {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                <span className="font-heading font-semibold">{isMuted ? 'Unmute' : 'Mute'}</span>
-              </button>
-              
               <div className="pt-3 border-t border-purple-500/20">
                 <button
                   onClick={copyRoomId}
@@ -498,13 +242,7 @@ const GamePage = () => {
             {room.players.map((player) => (
               <div
                 key={player.id}
-                className={`card-premium p-6 rounded-2xl border transition-all duration-300 ${
-                  player.id === socket?.id
-                    ? "bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-400/50 shadow-xl"
-                    : player.id === room.currentPlayer
-                    ? "bg-gradient-to-r from-orange-500/20 to-red-500/20 border-orange-400/50 shadow-xl animate-pulse-glow"
-                    : "bg-white/5 border-white/10 hover:shadow-lg"
-                }`}
+                className="card-premium p-6 rounded-2xl border bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-400/50 shadow-xl"
               >
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -514,18 +252,10 @@ const GamePage = () => {
                     <div>
                       <span className="font-heading font-semibold text-white text-lg">{player.name}</span>
                       <div className="flex items-center gap-2 mt-1">
-                        {player.id === room.hostId && (
-                          <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full">
-                            <Crown className="h-3 w-3 text-white" />
-                            <span className="text-xs font-semibold text-white">Host</span>
-                          </div>
-                        )}
-                        {player.id === room.currentPlayer && (
-                          <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-orange-500 to-red-500 rounded-full">
-                            <Timer className="h-3 w-3 text-white" />
-                            <span className="text-xs font-semibold text-white">Hot Seat</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full">
+                          <Crown className="h-3 w-3 text-white" />
+                          <span className="text-xs font-semibold text-white">Host</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -533,11 +263,6 @@ const GamePage = () => {
                 
                 <div className="flex items-center justify-between">
                   <span className="text-gray-300 font-medium">Score: {player.score ?? 0}</span>
-                  {player.id === room.currentPlayer && (
-                    <div className="px-3 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full text-xs font-bold animate-pulse">
-                      ACTIVE
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
@@ -601,13 +326,7 @@ const GamePage = () => {
               {room.players.map((player) => (
                 <div
                   key={player.id}
-                  className={`card-premium p-4 rounded-2xl border transition-all duration-300 ${
-                    player.id === socket?.id
-                      ? "bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-400/50 shadow-xl"
-                      : player.id === room.currentPlayer
-                      ? "bg-gradient-to-r from-orange-500/20 to-red-500/20 border-orange-400/50 shadow-xl animate-pulse-glow"
-                      : "bg-white/5 border-white/10 hover:shadow-lg"
-                  }`}
+                  className="card-premium p-4 rounded-2xl border bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-400/50 shadow-xl"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -617,28 +336,15 @@ const GamePage = () => {
                       <div>
                         <span className="font-heading font-semibold text-white">{player.name}</span>
                         <div className="flex items-center gap-2 mt-1">
-                          {player.id === room.hostId && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full">
-                              <Crown className="h-3 w-3 text-white" />
-                              <span className="text-xs font-semibold text-white">Host</span>
-                            </div>
-                          )}
-                          {player.id === room.currentPlayer && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-orange-500 to-red-500 rounded-full">
-                              <Timer className="h-3 w-3 text-white" />
-                              <span className="text-xs font-semibold text-white">Hot Seat</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full">
+                            <Crown className="h-3 w-3 text-white" />
+                            <span className="text-xs font-semibold text-white">Host</span>
+                          </div>
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
                       <span className="text-gray-300 font-medium text-sm">Score: {player.score ?? 0}</span>
-                      {player.id === room.currentPlayer && (
-                        <div className="px-2 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full text-xs font-bold animate-pulse mt-1">
-                          ACTIVE
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -657,164 +363,84 @@ const GamePage = () => {
               </div>
               
               <div className="flex-1 overflow-y-auto space-y-3 mb-4">
-                {room.chatHistory.map((message) => (
-                  <div key={message.id} className="card-premium p-3 rounded-xl">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                        {message.player.name.charAt(0).toUpperCase()}
-                      </div>
-                      <span className="text-sm font-semibold text-purple-300">{message.player.name}</span>
-                    </div>
-                    <p className="text-gray-300 text-sm">{message.message}</p>
-                  </div>
-                ))}
+                <div className="card-premium p-3 rounded-xl">
+                  <p className="text-gray-300 text-sm">Chat functionality coming soon!</p>
+                </div>
               </div>
-              
-              <form onSubmit={handleSendMessage} className="flex gap-3">
-                <input
-                  type="text"
-                  value={chatMessage}
-                  onChange={(e) => setChatMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="input-premium flex-1 px-4 py-3 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-                <button
-                  type="submit"
-                  className="btn-premium px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  Send
-                </button>
-              </form>
             </div>
           )}
 
-          {/* WebRTC Test Component */}
-          <WebRTCTest socket={socket} room={room} currentUserId={socket?.id} />
-          
-          {/* WebRTC Status Component */}
-          <WebRTCStatus socket={socket} room={room} currentUserId={socket?.id} />
-          
-          {/* WebRTC Connection Test Component */}
-          <WebRTCConnectionTest socket={socket} room={room} currentUserId={socket?.id} />
-          
           {/* Main Game Content */}
           {mobileView === "main" && (
-            <>
-              {room.status === "WAITING" ? (
-                <div className="flex flex-col items-center justify-center h-full gap-8">
-                  <div className="text-center space-y-6">
-                    <div className="flex items-center justify-center gap-4 mb-8">
-                      <div className="w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse-glow">
-                        <Users className="h-10 w-10 text-white" />
-                      </div>
-                      <h2 className="font-display text-4xl font-black gradient-premium-text">Waiting for Players</h2>
-                      <div className="w-20 h-20 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse-glow" style={{animationDelay: '1s'}}>
-                        <Sparkles className="h-10 w-10 text-white" />
-                      </div>
-                    </div>
-                    <p className="font-heading text-xl text-gray-300 max-w-2xl leading-relaxed">
-                      Share the room code with friends to start the ultimate bluffing experience!
-                    </p>
+            <div className="flex flex-col items-center justify-center h-full gap-8">
+              <div className="text-center space-y-6">
+                <div className="flex items-center justify-center gap-4 mb-8">
+                  <div className="w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse-glow">
+                    <Users className="h-10 w-10 text-white" />
                   </div>
-                  
-                  {showSettings && (
-                    <GameSettings room={room} socket={socket} isHost={isHost} />
-                  )}
-                  
-                  {isHost && room.players.length >= 2 && (
-                    <button
-                      onClick={handleStartGame}
-                      className="btn-premium px-12 py-6 bg-gradient-to-r from-green-500 via-emerald-600 to-teal-600 text-white rounded-2xl font-heading font-bold text-xl hover:from-green-600 hover:via-emerald-700 hover:to-teal-700 transition-all duration-300 shadow-2xl hover:shadow-3xl transform hover:scale-105"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Zap className="h-6 w-6" />
-                        <span>Start Game</span>
-                        <Sparkles className="h-5 w-5" />
-                      </div>
-                    </button>
-                  )}
+                  <h2 className="font-display text-4xl font-black gradient-premium-text">Waiting for Players</h2>
+                  <div className="w-20 h-20 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse-glow" style={{animationDelay: '1s'}}>
+                    <Sparkles className="h-10 w-10 text-white" />
+                  </div>
                 </div>
-              ) : room.status === "STORY_SUBMISSION" ? (
-                <StorySubmission 
-                  room={room} 
-                  socket={socket} 
-                  hasSubmitted={hasSubmitted}
-                  onStoriesSubmitted={() => setHasSubmitted(true)}
-                />
-              ) : room.status === "QUESTIONING" ? (
-                <QuestioningPhase 
-                  room={room} 
-                  socket={socket} 
-                  isCurrentPlayer={isCurrentPlayer}
-                  timeLeft={timeLeft}
-                  isMuted={isMuted}
-                  setIsMuted={setIsMuted}
-                />
-              ) : room.status === "VOTING" ? (
-                <VotingPhase 
-                  room={room} 
-                  socket={socket} 
-                  timeLeft={timeLeft}
-                  currentPlayerId={socket?.id}
-                />
-              ) : room.status === "REVEAL" ? (
-                <ResultsReveal room={room} timeLeft={timeLeft} />
-              ) : room.status === "GAME_OVER" ? (
-                <GameOver 
-                  room={room} 
-                  isHost={isHost}
-                  onResetGame={handleResetGame}
-                />
-              ) : null}
-            </>
+                <p className="font-heading text-xl text-gray-300 max-w-2xl leading-relaxed">
+                  Share the room code with friends to start the ultimate bluffing experience!
+                </p>
+                <p className="text-gray-400 text-sm">
+                  Full multiplayer functionality coming soon!
+                </p>
+              </div>
+              
+              {isHost && room.players.length >= 1 && (
+                <button
+                  onClick={handleStartGame}
+                  className="btn-premium px-12 py-6 bg-gradient-to-r from-green-500 via-emerald-600 to-teal-600 text-white rounded-2xl font-heading font-bold text-xl hover:from-green-600 hover:via-emerald-700 hover:to-teal-700 transition-all duration-300 shadow-2xl hover:shadow-3xl transform hover:scale-105"
+                >
+                  <div className="flex items-center gap-3">
+                    <Zap className="h-6 w-6" />
+                    <span>Start Game</span>
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                </button>
+              )}
+            </div>
           )}
         </main>
 
         {/* Right Sidebar - Chat (Desktop Only) */}
-        {showChat && (
-          <aside className="hidden lg:flex w-80 glass-premium border-l border-purple-500/20 flex-col">
-            <div className="p-6 border-b border-purple-500/20">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <MessageCircle className="h-5 w-5 text-white" />
-                </div>
-                <h3 className="font-heading text-xl font-bold text-white">Chat</h3>
+        <aside className="hidden lg:flex w-80 glass-premium border-l border-purple-500/20 flex-col">
+          <div className="p-6 border-b border-purple-500/20">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <MessageCircle className="h-5 w-5 text-white" />
               </div>
+              <h3 className="font-heading text-xl font-bold text-white">Chat</h3>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-3">
-              {room.chatHistory.map((message) => (
-                <div key={message.id} className="card-premium p-3 rounded-xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                      {message.player.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="text-sm font-semibold text-purple-300">{message.player.name}</span>
-                  </div>
-                  <p className="text-gray-300 text-sm">{message.message}</p>
-                </div>
-              ))}
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            <div className="card-premium p-3 rounded-xl">
+              <p className="text-gray-300 text-sm">Chat functionality coming soon!</p>
             </div>
-            
-            <div className="p-6 border-t border-purple-500/20">
-              <form onSubmit={handleSendMessage} className="flex gap-3">
-                <input
-                  type="text"
-                  value={chatMessage}
-                  onChange={(e) => setChatMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="input-premium flex-1 px-4 py-3 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-                <button
-                  type="submit"
-                  className="btn-premium px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  Send
-                </button>
-              </form>
+          </div>
+          
+          <div className="p-6 border-t border-purple-500/20">
+            <div className="flex gap-3">
+              <input
+                type="text"
+                placeholder="Chat coming soon..."
+                disabled
+                className="input-premium flex-1 px-4 py-3 text-gray-400 placeholder-gray-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+              <button
+                disabled
+                className="btn-premium px-6 py-3 bg-gray-600 text-gray-400 rounded-xl cursor-not-allowed"
+              >
+                Send
+              </button>
             </div>
-          </aside>
-        )}
+          </div>
+        </aside>
       </div>
     </div>
   );

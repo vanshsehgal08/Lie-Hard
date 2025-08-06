@@ -4,12 +4,12 @@ import { User, Sparkles, ArrowRight } from "lucide-react";
 
 const PlayerNamePage = () => {
   const [name, setName] = useState("");
-  const { connectSocket } = useSocket();
+  const { setPlayer } = useSocket();
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    connectSocket(name);
+    setPlayer(name);
   };
 
   return (
