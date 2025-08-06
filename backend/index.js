@@ -9,7 +9,8 @@ import { registerRoutes } from "./routes.js";
 
 const allowedOrigins = [
   "http://localhost:3000", // dev frontend
-  "https://wit-link.vercel.app", // deployed frontend
+  "https://lie-hard.vercel.app", // deployed frontend
+  "https://wit-link.vercel.app", // old frontend (keeping for backward compatibility)
 ];
 
 const app = express();

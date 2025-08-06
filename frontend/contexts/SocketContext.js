@@ -14,7 +14,8 @@ export const SocketProvider = ({ children }) => {
   const connectSocket = (playerName) => {
     // create new socket
     if (!socket) {
-      const socketUrl = "http://localhost:3001";
+      // Use environment variable for production, fallback to localhost for development
+      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
       console.log("Connecting to socket URL:", socketUrl);
       console.log("Environment variable NEXT_PUBLIC_SOCKET_URL:", process.env.NEXT_PUBLIC_SOCKET_URL);
       const s = io(socketUrl, {
