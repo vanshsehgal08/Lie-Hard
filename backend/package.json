@@ -18,7 +18,6 @@
     "express": "^5.1.0",
     "nodemon": "^3.1.10",
     "socket.io": "^4.8.1",
-    "nanoid": "^5.1.5",
-    "socket.io-adapter-redis": "^6.1.1"
+    "nanoid": "^5.1.5"
   }
 }
