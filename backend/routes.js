@@ -5,6 +5,11 @@ const clients = new Map(); // roomId -> Set of client connections
 const pendingMessages = new Map(); // roomId -> Array of pending messages
 
 export function registerRoutes(app) {
+  // Simple test endpoint
+  app.get("/api/join-room-test", (req, res) => {
+    res.json({ success: true, message: "Join room test endpoint working" });
+  });
+
   // Test endpoint to verify backend is working
   app.get("/api/test", async (req, res) => {
     try {
